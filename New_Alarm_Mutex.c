@@ -121,7 +121,7 @@ void *alarm_thread (void *arg)
          * added. Setting current_alarm to 0 informs the insert
          * routine that the thread is not busy.
          */
-          printf("This is thread: %ld\n",pthread_self() );
+        //printf("This is thread: %ld\n",pthread_self() );
         current_alarm = 0;
         while(alarm_list == NULL){
             status = pthread_cond_wait(&alarm_cond, &alarm_mutex);
@@ -226,7 +226,6 @@ int main (int argc, char *argv[])
     unsigned int message_type;
 	int cmd_type;
     alarm_thread_t *head_thread, *last_thread, *thread_node;
-
     head_thread = last_thread = thread_node = NULL;
 
     while (1) {
@@ -247,54 +246,82 @@ int main (int argc, char *argv[])
         if (status != 0)
 				   err_abort (status, "Create alarm thread");
 
-				if(head_thread == NULL){
+           thread_node = (alarm_thread_t*)calloc(1,sizeof (alarm_thread_t));
+           thread_node->thread_id = thread;
+           thread_node->message_type = message_type;
 
-          thread_node = (alarm_thread_t*)calloc(1,sizeof (alarm_thread_t));
-          thread_node->thread_id = thread;
-          thread_node->message_type = message_type;
-					head_thread = thread_node;
-          thread_node = (alarm_thread_t*)calloc(1,sizeof (alarm_thread_t));
-          head_thread->link = thread_node;
+				if(head_thread == NULL){
+          head_thread = last_thread = thread_node;
+
 
 				}else
 				{
-          thread_node->thread_id = thread;
-          thread_node->message_type = message_type;
-          last_thread = thread_node;
-          thread_node = (alarm_thread_t*)calloc(1,sizeof (alarm_thread_t));
-					last_thread->link = thread_node;
+          last_thread->link = thread_node;
+			last_thread = thread_node;
 
 				}
+
 				printf("New Alarm Thread %ld For Message Type (%d) Created at %d: Type B.\n", thread, message_type, time(NULL));
-#ifdef DEBUG
-        for(last_thread= head_thread; last_thread->thread_id!=0; last_thread = (last_thread ->link))
-            printf("%ld %d\n", last_thread->thread_id,last_thread->message_type);
-#endif
+        #ifdef DEBUG
+        alarm_thread_t *temp;
+        for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
+            printf("%ld %d\n", temp->thread_id,temp->message_type);
+            #endif
+
+
 
 				break;
 			case 2:
                 terminated_message_type = message_type;
                 int contains=0;
-                alarm_thread_t *temp,*temp_last;
-                for(temp= head_thread; temp->thread_id!=0; temp_last=temp, temp = (temp ->link)){
-                    if((temp->message_type)==terminated_message_type){
-                      contains=1;
-                    break;
-                  }
-                  }
-                  if (contains){
-                    pthread_cancel(temp->thread_id);
-                    temp_last->link=temp->link;
+                alarm_thread_t *temp_thread,*temp_thread_past;
+                alarm_t *temp_alarm_count;
+                /*Remove thread of MessageType(x) from list, and cancel thread
+
+                */
+                for(temp_thread= head_thread; temp_thread!=NULL && head_thread != NULL; temp_thread_past=temp_thread, temp_thread = (temp_thread->link)){
+                           if((temp_thread->message_type)==terminated_message_type){
+                             contains=1;
+                           break;
+                         }
+                         }
+                         if (contains){
+
+                           printf("MessageType is here\n");
+                           pthread_cancel(temp_thread->thread_id);
+                           if(head_thread==temp_thread)
+                           head_thread=temp_thread>link;
+                           else
+                           temp_thread_past->link=thread_node->link;
+
+                           free(temp_thread);
 
 
-                  }
-                  else{
-                    printf("MessageType thread not here\n");
-                  }
-				  /*
-                          for(last_thread= head_thread; last_thread->thread_id!=0; last_thread = (last_thread ->link))
-                              printf("%ld %d\n", last_thread->thread_id,last_thread->message_type);
-						  */
+                           alarm_thread_t *temp;
+                           for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
+                               printf("%ld %d\n", temp->thread_id,temp->message_type);
+
+
+                         }
+                         else{
+                           printf("MessageType thread not here\n");
+                         }
+
+
+/*
+
+alarm_thread_t *temp;
+for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
+    printf("%ld %d\n", temp->thread_id,temp->message_type);
+
+
+                      printf("[list: ");
+                      for(next = alarm_list; next != NULL; next = next->link)
+                          printf("%d(%d)[\"%s\"] ", next->time,
+                  	    next->time, next->message);
+                            printf("]\n");
+*/
+
 
 
 				break;
