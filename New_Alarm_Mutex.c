@@ -291,8 +291,10 @@ int main (int argc, char *argv[])
                   else{
                     printf("MessageType thread not here\n");
                   }
+				  /*
                           for(last_thread= head_thread; last_thread->thread_id!=0; last_thread = (last_thread ->link))
                               printf("%ld %d\n", last_thread->thread_id,last_thread->message_type);
+						  */
 
 
 				break;
