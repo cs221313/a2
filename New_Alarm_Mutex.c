@@ -183,6 +183,12 @@ int get_cmd_type(char* line, unsigned int* msg_type, unsigned int* alarm_second,
 	char str_msg_type[20];
 	int ret_value;
 
+  /*
+   * Parse input line into seconds (%d) and a message
+   * (%128[^\n]), consisting of up to 128 characters
+   * separated from the seconds by whitespace.
+   */
+
 	if(sscanf(line, "%d %s %128[^\n]", alarm_second, str_msg_type, message) == 3)
 	{
 		ret_value = 3;
@@ -215,6 +221,7 @@ int get_cmd_type(char* line, unsigned int* msg_type, unsigned int* alarm_second,
 	return ret_value;
 }
 
+//Main Function, or Main thread
 int main (int argc, char *argv[])
 {
     int status;
@@ -224,23 +231,22 @@ int main (int argc, char *argv[])
     alarm_t *alarm, **last, *next;
     int message_type_len;
     unsigned int message_type;
-	int cmd_type;
+	  int cmd_type;
     alarm_thread_t *head_thread, *last_thread, *thread_node;
     head_thread = last_thread = thread_node = NULL;
 
+    //Loop runs until terminated
     while (1) {
       pthread_t thread;
         printf ("Alarm> ");
         if (fgets (line, sizeof (line), stdin) == NULL) exit (0);
         if (strlen (line) <= 1) continue;
 
-        /*
-         * Parse input line into seconds (%d) and a message
-         * (%64[^\n]), consisting of up to 64 characters
-         * separated from the seconds by whitespace.
-         */
+
+    //Get Command Type
 		cmd_type = get_cmd_type(line, &message_type, &alarm_second, message);
 		switch(cmd_type){
+      //If Type B
 			case 1:
 				status = pthread_create (&thread, NULL, alarm_thread, &message_type);
         if (status != 0)
@@ -262,15 +268,16 @@ int main (int argc, char *argv[])
 				}
 
 				printf("New Alarm Thread %ld For Message Type (%d) Created at %d: Type B.\n", thread, message_type, time(NULL));
+
+
         #ifdef DEBUG
         alarm_thread_t *temp;
         for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
             printf("%ld %d\n", temp->thread_id,temp->message_type);
-            #endif
-
-
+        #endif
 
 				break;
+      // Type C
 			case 2:
                 terminated_message_type = message_type;
                 int contains=0;
@@ -280,51 +287,51 @@ int main (int argc, char *argv[])
 
                 */
                 for(temp_thread= head_thread; temp_thread!=NULL && head_thread != NULL; temp_thread_past=temp_thread, temp_thread = (temp_thread->link)){
-                           if((temp_thread->message_type)==terminated_message_type){
-                             contains=1;
-                           break;
+                             if((temp_thread->message_type)==terminated_message_type){
+                               contains=1;
+                               //printf("MessageType is here\n");
+                               pthread_cancel(temp_thread->thread_id);
+                               if(head_thread==temp_thread)
+                               head_thread=temp_thread->link;
+                               else
+                               temp_thread_past->link=thread_node->link;
+                               free(temp_thread);
+
+                           }
+                           }
+                           if (contains){
+
+                             alarm_t *temp_alarm,*temp_alarm_past;
+                             temp_alarm_past=NULL;
+                             for(temp_alarm = alarm_list; temp_alarm!= NULL; temp_alarm_past=temp_alarm, temp_alarm = (temp_alarm->link)){
+                             if(temp_alarm->message_type==terminated_message_type){
+                               if(temp_alarm_past==NULL)
+                               free(temp_alarm_past);
+                               else{
+                                 temp_alarm_past->link=temp_alarm->link;
+                                 free(temp_alarm);
+                               }
+                           }
                          }
-                         }
-                         if (contains){
+                         }else{
+                            // printf("MessageType thread not here\n");
+                           }
 
-                           printf("MessageType is here\n");
-                           pthread_cancel(temp_thread->thread_id);
-                           if(head_thread==temp_thread)
-                           head_thread=temp_thread>link;
-                           else
-                           temp_thread_past->link=thread_node->link;
+#ifdef DEBUG
+                        alarm_thread_t *temp;
+                        for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
+                        printf("%ld %d\n", temp->thread_id,temp->message_type);
 
-                           free(temp_thread);
-
-
-                           alarm_thread_t *temp;
-                           for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
-                               printf("%ld %d\n", temp->thread_id,temp->message_type);
-
-
-                         }
-                         else{
-                           printf("MessageType thread not here\n");
-                         }
-
-
-/*
-
-alarm_thread_t *temp;
-for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
-    printf("%ld %d\n", temp->thread_id,temp->message_type);
-
-
-                      printf("[list: ");
-                      for(next = alarm_list; next != NULL; next = next->link)
-                          printf("%d(%d)[\"%s\"] ", next->time,
-                  	    next->time, next->message);
-                            printf("]\n");
-*/
-
-
+                        printf("[list: ");
+                        for(next = alarm_list; next != NULL; next = next->link)
+                            printf("%d(%d)[\"%s\"] ", next->time,
+                          next->time, next->message);
+                              printf("]\n");
+#endif
 
 				break;
+
+      //Type A
 			case 3:
                 alarm = (alarm_t*)malloc (sizeof (alarm_t));
                 if (alarm == NULL)
