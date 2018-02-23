@@ -37,9 +37,9 @@ alarm_t *alarm_list = NULL;
 time_t current_alarm = 0;
 
 typedef struct alarm_thread_tag {
-	struct alarm_thread_tag *link;
-	pthread_t thread_id;
-	unsigned int message_type;
+    struct alarm_thread_tag *link;
+    pthread_t thread_id;
+    unsigned int message_type;
 } alarm_thread_t;
 
 /*
@@ -79,7 +79,7 @@ void alarm_insert(alarm_t *alarm)
     printf("[list: ");
     for(next = alarm_list; next != NULL; next = next->link)
         printf("%d(%d)[\"%s\"] ", next->time,
-	    next->time/* = time (NULL)*/, next->message);
+        next->time/* = time (NULL)*/, next->message);
     printf("]\n");
 #endif
     /*
@@ -130,7 +130,7 @@ void alarm_insert_to_local(alarm_t **alarm_list_in_thread, alarm_t *alarm)
     printf("[list in thread: ");
     for(next = *alarm_list_in_thread; next != NULL; next = next->link)
         printf("%d(%d)[\"%s\"] ", next->time,
-	    next->time/* = time (NULL)*/, next->message);
+        next->time/* = time (NULL)*/, next->message);
     printf("]\n");
 #endif
 }
@@ -150,20 +150,20 @@ alarm_t* get_alarm(unsigned int message_type, alarm_t** local_list)
     alarm = alarm_list;  /* take the first alarm node out of alarm list */
     prev_alarm = alarm_list;
     while(alarm != NULL && alarm->message_type != message_type){
-	prev_alarm = alarm;
+        prev_alarm = alarm;
         alarm = alarm->link;
     }
     if(alarm != NULL && alarm == alarm_list){   /* alarm is the first node in the alarm list */
-	alarm_list = alarm->link;
+    alarm_list = alarm->link;
     }else if(alarm != NULL)
     {
         prev_alarm->link = alarm->link; /* remove alarm from alarm_list */
     }
 
     if(*local_list != NULL){
-	if(alarm != NULL){
+    if(alarm != NULL){
             alarm_insert_to_local(local_list, alarm);
-	}
+    }
         alarm = *local_list;
         *local_list = alarm->link;
     }
@@ -181,10 +181,6 @@ void *alarm_thread (void *arg)
     time_t now;
     int status, expired;  //expired: check pthread_cond_timedwait is timeout or not.
     unsigned int message_type = *(unsigned int*)arg;
-
-#ifdef DEBUG
-    printf("message_type = %d\n", message_type);
-#endif
 
     /*
      * Loop forever, processing commands. The alarm thread will
@@ -205,10 +201,10 @@ void *alarm_thread (void *arg)
         while((alarm = get_alarm(message_type, &alarm_list_in_thread)) == NULL && alarm_list == NULL){
 #ifdef DEBUG
             printf("[list in thread after get_alarm: ");
-	    alarm_t* next;
+        alarm_t* next;
             for(next = alarm_list_in_thread; next != NULL; next = next->link)
                 printf("%d(%d)[\"%s\"] ", next->time,
-	    next->time/* = time (NULL)*/, next->message);
+        next->time/* = time (NULL)*/, next->message);
             printf("]\n");
 #endif
             status = pthread_cond_wait(&alarm_cond, &alarm_mutex);
@@ -216,23 +212,23 @@ void *alarm_thread (void *arg)
                 err_abort(status, "Wait on cond");
         }
 
-	if(strlen(alarm->message) == 0){
-	    free(alarm);
-	    while(alarm_list_in_thread)
+    if(strlen(alarm->message) == 0){
+        free(alarm);
+        while(alarm_list_in_thread)
             {
-	        alarm_t *tmp_alarm = alarm_list_in_thread;
-	        alarm_list_in_thread = alarm_list_in_thread->link;
-	        free(tmp_alarm);
+            alarm_t *tmp_alarm = alarm_list_in_thread;
+            alarm_list_in_thread = alarm_list_in_thread->link;
+            free(tmp_alarm);
             }
 #ifdef DEBUG
             printf("alarm_list_in_thread: %d", alarm_list_in_thread);
-	    pthread_mutex_unlock(&alarm_mutex);
-	    return;
+        pthread_mutex_unlock(&alarm_mutex);
+        return;
 #endif
-	}
+    }
         now = time(NULL);
         expired = 0;
-	printf("Alarm Request With Message Type (%d) Assigned to Alarm Thread %d at %d: Type A\n", message_type, pthread_self(), time(NULL));
+    printf("Alarm Request With Message Type (%d) Assigned to Alarm Thread %d at %d: Type A\n", message_type, pthread_self(), time(NULL));
 #ifdef DEBUG
         printf("alarm time in alarm thread: %d, now: %d\n", alarm->time, now);
 #endif
@@ -260,10 +256,21 @@ void *alarm_thread (void *arg)
             expired = 1;
         if(expired){
             printf("Alarm With Message Type(%d) Printed by Alarm Thread %d at %d: Type B Message: %s\n",
-			    alarm->message_type, pthread_self(), time(NULL), alarm->message);
+                alarm->message_type, pthread_self(), time(NULL), alarm->message);
             free(alarm);
         }
     }
+}
+
+int get_msg_type(char* str_msg_type, int* msg_type)
+{
+    if(sscanf(str_msg_type, "%*[^0123456789]%d", msg_type) == 1 && 
+       strncmp(str_msg_type,"MessageType(",strlen("MessageType(") - 1 ) == 0)
+    {
+        return 0;
+    }
+
+    return -1;
 }
 
 /**
@@ -280,40 +287,43 @@ void *alarm_thread (void *arg)
 */
 int get_cmd_type(char* line, unsigned int* msg_type, unsigned int* alarm_second, char* message)
 {
-	char cmd[20];
-	char str_msg_type[20];
-	int ret_value;
+    char cmd[20];
+    char str_msg_type[20];
+    int ret_value;
     
-	if(sscanf(line, "%d %s %128[^\n]", alarm_second, str_msg_type, message) == 3)
-	{   
-		ret_value = 3;
-        
-	}else if(sscanf(line, "%s %s[^\n]",cmd, str_msg_type) == 2)
-	{
-        if(sscanf(str_msg_type, "%*[^0123456789]%d", msg_type) == 1 && 
-           strncmp(str_msg_type,"MessageType(",strlen("MessageType(") - 1 ) == 0){
+    if(sscanf(line, "%d %s %128[^\n]", alarm_second, str_msg_type, message) == 3)
+    {
+        if(get_msg_type(str_msg_type, msg_type) == 0){
+            ret_value = 3;
+        }else
+        {
+            ret_value = -1;
+        } 
+    }else if(sscanf(line, "%s %s[^\n]",cmd, str_msg_type) == 2)
+    {
+        if(get_msg_type(str_msg_type, msg_type) == 0){
            if(*msg_type < 1){
                fprintf (stderr, "Message type must be the positive integer.\n");
                ret_value = -1;
            }else if(strcmp(cmd,"Create_Thread:")==0){
-			   ret_value = 1;
-		   }else if(strcmp(cmd,"Terminate_Thread:") == 0){
-			   ret_value = 2;
-		   }else
-		   {
-			   ret_value = -1;
-		   }
-		}else
-		{
-			ret_value = -1;
-		}
-	}else
-	{
-            fprintf (stderr, "The number of parameters is not correct.\n");
-	    ret_value = -1;
-	}
-	
-	return ret_value;
+               ret_value = 1;
+           }else if(strcmp(cmd,"Terminate_Thread:") == 0){
+               ret_value = 2;
+           }else
+           {
+               ret_value = -1;
+           }
+        }else
+        {
+            ret_value = -1;
+        }
+    }else
+    {
+        fprintf (stderr, "The number of parameters is not correct.\n");
+        ret_value = -1;
+    }
+    
+    return ret_value;
 }
 
 void create_alarm(int alarm_second, unsigned int message_type, char *message, int kill_thread_alarm)
@@ -376,75 +386,75 @@ int main (int argc, char *argv[])
          * (%128[^\n]), consisting of up to 128 characters
          * separated from the seconds by whitespace.
          */
-	cmd_type = get_cmd_type(line, &message_type, &alarm_second, message);
-	switch(cmd_type){
+        cmd_type = get_cmd_type(line, &message_type, &alarm_second, message);
+        switch(cmd_type){
             case 1:
-		for(thread_node = head_thread; thread_node != NULL; thread_node = thread_node->link)
-		{
-		    if(message_type == thread_node->message_type){
-			printf("The thread of message type %d has been created", message_type);
-			thread_existed = 1;
-			break;
-		    }
-		}
-                if(thread_existed){
-		    break;
-		}
-		status = pthread_create (&thread, NULL, alarm_thread, &message_type);
-		if (status != 0)
-		   err_abort (status, "Create alarm thread");
-		thread_node = (alarm_thread_t*)malloc(sizeof (alarm_thread_t));
-		thread_node->thread_id = thread;
-		thread_node->message_type = message_type;
-		thread_node->link = NULL;
-		if(last_thread == NULL){
-                    head_thread = last_thread = thread_node;
-		}else
-		{
-		    last_thread->link = thread_node;
-		    last_thread = thread_node;
-		}
-		printf("New Alarm Thread %d For Message Type (%d) Created at %d: Type B.\n", 
-				thread, message_type, time(NULL));
-#ifdef DEBUG
-               alarm_thread_t *temp;
-               for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
-               printf("%ld %d\n", temp->thread_id);
-#endif
-		break;
-
+                for(thread_node = head_thread; thread_node != NULL; thread_node = thread_node->link)
+                {
+                    if(message_type == thread_node->message_type){
+                    printf("The thread of message type %d has been created", message_type);
+                    thread_existed = 1;
+                    break;
+                    }
+                }
+                        if(thread_existed){
+                    break;
+                }
+                status = pthread_create (&thread, NULL, alarm_thread, &message_type);
+                if (status != 0)
+                   err_abort (status, "Create alarm thread");
+                thread_node = (alarm_thread_t*)malloc(sizeof (alarm_thread_t));
+                thread_node->thread_id = thread;
+                thread_node->message_type = message_type;
+                thread_node->link = NULL;
+                if(last_thread == NULL){
+                            head_thread = last_thread = thread_node;
+                }else
+                {
+                    last_thread->link = thread_node;
+                    last_thread = thread_node;
+                }
+                printf("New Alarm Thread %d For Message Type (%d) Created at %d: Type B.\n", 
+                        thread, message_type, time(NULL));
+    #ifdef DEBUG
+                       alarm_thread_t *temp;
+                       for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
+                       printf("%ld %d\n", temp->thread_id);
+    #endif
+                break;
+    
             case 2:
-		prev_thread_node = thread_node = head_thread;
-		while(thread_node != NULL)
-		{
+                prev_thread_node = thread_node = head_thread;
+                while(thread_node != NULL)
+                {
                     if((thread_node->message_type)== message_type){
                        create_alarm(1, thread_node->message_type, "", 1);
                        status = pthread_join(thread_node->thread_id, &thread_result);
-		       if(status != 0){
-			   err_abort(status, "Join thread");
-		       }
-		       if(head_thread == thread_node){
-		           head_thread = thread_node = thread_node->link;
-			   free(prev_thread_node);
-			   prev_thread_node = thread_node;
-                       }else
-		       {
-			   prev_thread_node->link = thread_node->link;
-			   free(thread_node);
-			   thread_node = prev_thread_node->link;
-		       }
-		    }else
-		    {
-		       thread_node = thread_node->link;
-		    }
-		}
-		break;
+                       if(status != 0){
+                       err_abort(status, "Join thread");
+                       }
+                       if(head_thread == thread_node){
+                           head_thread = thread_node = thread_node->link;
+                       free(prev_thread_node);
+                       prev_thread_node = thread_node;
+                               }else
+                       {
+                       prev_thread_node->link = thread_node->link;
+                       free(thread_node);
+                       thread_node = prev_thread_node->link;
+                       }
+                    }else
+                    {
+                       thread_node = thread_node->link;
+                    }
+                }
+                break;
             case 3:
-		create_alarm(alarm_second, message_type, message, 0);
-		break;
+                create_alarm(alarm_second, message_type, message, 0);
+                break;
             case -1:
                 fprintf (stderr, "Bad command\n");
-		break;
-	}
+                break;
+        }
     }
 }
