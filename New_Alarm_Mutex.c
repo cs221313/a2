@@ -35,11 +35,11 @@ pthread_mutex_t alarm_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t alarm_cond = PTHREAD_COND_INITIALIZER;
 alarm_t *alarm_list = NULL;
 time_t current_alarm = 0;
-unsigned int terminated_message_type = 0;
 
 typedef struct alarm_thread_tag {
 	struct alarm_thread_tag *link;
 	pthread_t thread_id;
+	unsigned int message_type;
 } alarm_thread_t;
 
 /*
@@ -208,13 +208,28 @@ void *alarm_thread (void *arg)
 	    alarm_t* next;
             for(next = alarm_list_in_thread; next != NULL; next = next->link)
                 printf("%d(%d)[\"%s\"] ", next->time,
-	        next->time/* = time (NULL)*/, next->message);
-    printf("]\n");
+	    next->time/* = time (NULL)*/, next->message);
+            printf("]\n");
 #endif
             status = pthread_cond_wait(&alarm_cond, &alarm_mutex);
             if(status != 0)
                 err_abort(status, "Wait on cond");
         }
+
+	if(strlen(alarm->message) == 0){
+	    free(alarm);
+	    while(alarm_list_in_thread)
+            {
+	        alarm_t *tmp_alarm = alarm_list_in_thread;
+	        alarm_list_in_thread = alarm_list_in_thread->link;
+	        free(tmp_alarm);
+            }
+#ifdef DEBUG
+            printf("alarm_list_in_thread: %d", alarm_list_in_thread);
+	    pthread_mutex_unlock(&alarm_mutex);
+	    return;
+#endif
+	}
         now = time(NULL);
         expired = 0;
 	printf("Alarm Request With Message Type (%d) Assigned to Alarm Thread %d at %d: Type A\n", message_type, pthread_self(), time(NULL));
@@ -301,6 +316,39 @@ int get_cmd_type(char* line, unsigned int* msg_type, unsigned int* alarm_second,
 	return ret_value;
 }
 
+void create_alarm(int alarm_second, unsigned int message_type, char *message, int kill_thread_alarm)
+{
+    int status;
+    alarm_t* alarm = (alarm_t*)malloc (sizeof (alarm_t));
+    if (alarm == NULL)
+        errno_abort ("Allocate alarm");
+    status = pthread_mutex_lock (&alarm_mutex);
+    if (status != 0)
+        err_abort (status, "Lock mutex");
+    alarm->seconds = alarm_second;
+    alarm->time = time (NULL) + alarm->seconds;
+#ifdef DEBUG
+    printf("alarm time: %d\n", alarm->time);
+#endif
+    alarm->message_type = message_type;
+    alarm->status = 0;
+    strcpy(alarm->message, message);
+
+    /*
+     * Insert the new alarm into the list of alarms,
+     * sorted by expiration time.
+     */
+    alarm_insert(alarm);
+    if(!kill_thread_alarm){
+        printf("Alarm Request With Message Type (%d) Inserted by Main Thread %d Into Alarm List at %d: Type A\n", alarm->message_type, pthread_self(), time (NULL));
+    }
+
+    status = pthread_mutex_unlock (&alarm_mutex);
+    if (status != 0)
+        err_abort (status, "Unlock mutex");
+
+}
+
 int main (int argc, char *argv[])
 {
     int status;
@@ -311,8 +359,10 @@ int main (int argc, char *argv[])
     pthread_t thread;
     int message_type_len;
     unsigned int message_type;
-	int cmd_type;
-    alarm_thread_t *head_thread, *last_thread, *thread_node;
+    int cmd_type;
+    alarm_thread_t *head_thread, *last_thread, *thread_node, *prev_thread_node;
+    void* thread_result;
+    int thread_existed = 0;
     
     head_thread = last_thread = thread_node = NULL;
 
@@ -329,11 +379,24 @@ int main (int argc, char *argv[])
 	cmd_type = get_cmd_type(line, &message_type, &alarm_second, message);
 	switch(cmd_type){
             case 1:
+		for(thread_node = head_thread; thread_node != NULL; thread_node = thread_node->link)
+		{
+		    if(message_type == thread_node->message_type){
+			printf("The thread of message type %d has been created", message_type);
+			thread_existed = 1;
+			break;
+		    }
+		}
+                if(thread_existed){
+		    break;
+		}
 		status = pthread_create (&thread, NULL, alarm_thread, &message_type);
 		if (status != 0)
 		   err_abort (status, "Create alarm thread");
 		thread_node = (alarm_thread_t*)malloc(sizeof (alarm_thread_t));
 		thread_node->thread_id = thread;
+		thread_node->message_type = message_type;
+		thread_node->link = NULL;
 		if(last_thread == NULL){
                     head_thread = last_thread = thread_node;
 		}else
@@ -343,40 +406,45 @@ int main (int argc, char *argv[])
 		}
 		printf("New Alarm Thread %d For Message Type (%d) Created at %d: Type B.\n", 
 				thread, message_type, time(NULL));
+#ifdef DEBUG
+               alarm_thread_t *temp;
+               for(temp= head_thread; temp!=NULL && head_thread != NULL; temp= (temp ->link))
+               printf("%ld %d\n", temp->thread_id);
+#endif
 		break;
+
             case 2:
-                terminated_message_type = message_type;
+		prev_thread_node = thread_node = head_thread;
+		while(thread_node != NULL)
+		{
+                    if((thread_node->message_type)== message_type){
+                       create_alarm(1, thread_node->message_type, "", 1);
+                       status = pthread_join(thread_node->thread_id, &thread_result);
+		       if(status != 0){
+			   err_abort(status, "Join thread");
+		       }
+		       if(head_thread == thread_node){
+		           head_thread = thread_node = thread_node->link;
+			   free(prev_thread_node);
+			   prev_thread_node = thread_node;
+                       }else
+		       {
+			   prev_thread_node->link = thread_node->link;
+			   free(thread_node);
+			   thread_node = prev_thread_node->link;
+		       }
+		    }else
+		    {
+		       thread_node = thread_node->link;
+		    }
+		}
 		break;
             case 3:
-                alarm = (alarm_t*)malloc (sizeof (alarm_t));
-                if (alarm == NULL)
-                    errno_abort ("Allocate alarm");
-                status = pthread_mutex_lock (&alarm_mutex);
-                if (status != 0)
-                    err_abort (status, "Lock mutex");
-                alarm->seconds = alarm_second;
-                alarm->time = time (NULL) + alarm->seconds;
-#ifdef DEBUG
-                printf("alarm time: %d\n", alarm->time);
-#endif
-                alarm->message_type = message_type;
-                alarm->status = 0;
-                strcpy(alarm->message, message);
-
-                /*
-                 * Insert the new alarm into the list of alarms,
-                 * sorted by expiration time.
-                 */
-                alarm_insert(alarm);
-                printf("Alarm Request With Message Type (%d) Inserted by Main Thread %d Into Alarm List at %d: Type A\n", alarm->message_type, pthread_self(), time (NULL));
-
-                status = pthread_mutex_unlock (&alarm_mutex);
-                if (status != 0)
-                    err_abort (status, "Unlock mutex");
-				break;
-			case -1:
+		create_alarm(alarm_second, message_type, message, 0);
+		break;
+            case -1:
                 fprintf (stderr, "Bad command\n");
-				break;
+		break;
 	}
     }
 }
