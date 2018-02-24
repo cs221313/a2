@@ -139,12 +139,13 @@ void *alarm_thread (void *arg)
       * Loop forever, processing commands. The alarm thread will
       * be disintegrated when the process exits.
       */
-      status = pthread_mutex_lock (&alarm_mutex);
-      if (status != 0)
-          err_abort (status, "Lock mutex");
-
+  pthread_cleanup_push(pthread_mutex_unlock, &alarm_mutex);
      while (1) {
+       status = pthread_mutex_lock (&alarm_mutex);
+       if (status != 0)
+           err_abort (status, "Lock mutex");
  		     alarm = alarm_list;
+
 /*
 Thread checks to see if alarm in list with same MessageType and not already assigned is available
 */
@@ -159,7 +160,6 @@ Thread checks to see if alarm in list with same MessageType and not already assi
 
  		}
   }
-     sched_yield ();
 
 /*
 If thread does not have an alarm after checking the list, it waits until a new alarm is put into the list, and looks at list again
@@ -169,6 +169,9 @@ If thread does not have an alarm after checking the list, it waits until a new a
            status = pthread_cond_wait(&alarm_cond, &alarm_mutex);
             if(status != 0)
             err_abort(status, "Wait on cond");
+            status = pthread_mutex_unlock (&alarm_mutex);
+            if (status != 0)
+            err_abort (status, "Unlock mutex");
             continue;
  		}
 /*
@@ -177,7 +180,6 @@ Thread found a new alarm in the list, or already has an alarm
       else{
 /*
 If thread found new alarm, assign it, and put it in the thread's sub list
-
 */
       if(alarm!=NULL){
 /*
@@ -189,7 +191,7 @@ Remove the thread from the main list
 */
       alarm_remover(alarm);
  			printf("Alarm With Message Type(%d)Assigned to Alarm Thread %ld at %d : %c\n",alarm->message_type,(long)pthread_self(),time (NULL),'A');
-
+      alarm->time=time (NULL)+alarm->seconds;
       alarm_t **last, *next;
       /*
       Place alarm in list by time
@@ -248,6 +250,7 @@ If the current_alarm is not ready to go, go back to the list, and check if new a
              }
 
      }
+      pthread_cleanup_pop(1);
  }
 
 /**
