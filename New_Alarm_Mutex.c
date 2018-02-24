@@ -131,7 +131,6 @@ void *alarm_thread (void *arg)
      time_t now;
      int status;
      int type_of_thread = *((int *) arg);
-    free(arg);
     current_alarm=NULL;
     thread_alarm_list=NULL;
 
@@ -337,9 +336,8 @@ int main (int argc, char *argv[])
 		switch(cmd_type){
       //If Type B
       case 1:{
-        int *i = malloc(sizeof(*i));
-        *i=message_type;
-				status = pthread_create (&thread, NULL, alarm_thread, (void *)i);
+        int i = message_type;
+				status = pthread_create (&thread, NULL, alarm_thread, &i);
         if (status != 0)
 				   err_abort (status, "Create alarm thread");
 
@@ -466,6 +464,7 @@ int main (int argc, char *argv[])
 #endif
                 alarm->message_type = message_type;
                 alarm->status = 0;
+                alarm->link = NULL;
                 strcpy(alarm->message, message);
 
                 /*
