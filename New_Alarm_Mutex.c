@@ -3,12 +3,11 @@
 *
 * This is an enhancement to the alarm_thread.c program, which
 * created an "alarm thread" for each alarm command. This new
-* version uses a single alarm thread, which reads the next
+* version uses multiple alarm threads, which reads the next suitable
 * entry in a list. The main thread places new requests onto the
-* list, in order of absolute expiration time. The list is
-* protected by a mutex, and the alarm thread sleeps for at
-* least 1 second, each iteration, to ensure that the main
-* thread can lock the mutex to add new work to the list.
+* list, in order of messagetype. The list is protected by a mutex.
+* The Threads are able to concurrently deal with alarms
+*
 */
 #include <pthread.h>
 #include <time.h>
@@ -17,11 +16,12 @@
 #include <limits.h>
 
 /*
-* The "alarm" structure now contains the time_t (time since the
+* The "alarm" structure contains the time_t (time since the
 * Epoch, in seconds) for each alarm, so that they can be
-* sorted. Storing the requested number of seconds would not be
+* sorted in each thread. Storing the requested number of seconds would not be
 * enough, since the "alarm thread" cannot tell how long it has
-* been on the list.
+* been on the list. seconds variable will provide thread with how long it should
+*wait
 */
 typedef struct alarm_tag {
 	struct alarm_tag    *link;
@@ -45,15 +45,15 @@ typedef struct alarm_thread_tag {
 } alarm_thread_t;
 
 /*
-* Insert alram entry in global alarm_list by MessageType.
-*/
+ * Insert alram entry in global alarm_list by MessageType.
+ */
 void alarm_insert(alarm_t *alarm)
 {
 	int status;
 	alarm_t **last, *next;
 	/*
-	Place alarm in list by message type
-	*/
+	 *Place alarm in list by message type
+	 */
 	last = &alarm_list;
 	next = *last;
 	while(next != NULL){
@@ -82,11 +82,10 @@ void alarm_insert(alarm_t *alarm)
 	printf("]\n");
 #endif
 	/*
-	* Wake all alarm threads if it is not busy; that is if
-	the thread has no alarm assigned to it, or it has a alarm, but
-	sleeps longer
-	* which the alarm thread is waiting.
-	*/
+	 *Wake all alarm threads if it is not busy; that is if
+	 *the thread has no alarm assigned to it, or it has a alarm, but
+	 *has not gone off yet
+	 */
 	status = pthread_cond_broadcast(&alarm_cond);
 	if(status != 0)
 	err_abort(status, "Broadcast cond");
@@ -94,8 +93,8 @@ void alarm_insert(alarm_t *alarm)
 }
 
 /*
-Removes alarm from the global alarm_list after being assigned to a thread.
-*/
+ *Removes alarm from the global alarm_list after being assigned to a thread.
+ */
 void alarm_remover(alarm_t *alarm){
 	alarm_t *temp_alarm,*temp_alarm_past;
 	temp_alarm_past=NULL;
@@ -122,8 +121,8 @@ void alarm_remover(alarm_t *alarm){
 }
 
 /*
-* The alarm thread's start routine.
-*/
+ * The alarm thread's start routine.
+ */
 void *alarm_thread (void *arg)
 {
 	alarm_t *alarm,*current_alarm,*thread_alarm_list;
@@ -133,21 +132,29 @@ void *alarm_thread (void *arg)
 	int type_of_thread = *((int *) arg);
 	current_alarm=NULL;
 	thread_alarm_list=NULL;
-
-	/*
-	* Loop forever, processing commands. The alarm thread will
-	* be disintegrated when the process exits.
-	*/
+  /*
+	 *Push the function pthread_mutex_lock to cleanup thread after termination
+	 */
 	pthread_cleanup_push(pthread_mutex_unlock, &alarm_mutex);
+	/*
+	 * Loop forever, processing commands. The alarm thread will
+	 * be disintegrated when the process exits.
+	 */
 	while (1) {
+		/*
+     *Get Mutex lock
+     */
 		status = pthread_mutex_lock (&alarm_mutex);
 		if (status != 0)
 		err_abort (status, "Lock mutex");
 		alarm = alarm_list;
-
 		/*
-Thread checks to see if alarm in list with same MessageType and not already assigned is available
-*/
+     *Assign thread local variable alarm to the start of the global
+		 *variable alarm_list
+     */
+		/*
+     *Thread checks to see if alarm in list with same MessageType and not already assigned is available
+     */
 		if(alarm!=NULL){
 			while(alarm->message_type!=type_of_thread || alarm->status!=0){
 				if(alarm->link != NULL)
@@ -161,10 +168,11 @@ Thread checks to see if alarm in list with same MessageType and not already assi
 		}
 
 		/*
-If thread does not have an alarm after checking the list, it waits until a new alarm is put into the list, and looks at list again
-*/
+     *If thread does not have an alarm after checking the list, it waits until
+		 *a new alarm is put into the list through the condition variable,
+		 *and looks at list again
+     */
 		if (alarm == NULL &&  thread_alarm_list==NULL){
-			//printf("Empty list\n");
 			status = pthread_cond_wait(&alarm_cond, &alarm_mutex);
 			if(status != 0)
 			err_abort(status, "Wait on cond");
@@ -174,27 +182,27 @@ If thread does not have an alarm after checking the list, it waits until a new a
 			continue;
 		}
 		/*
-Thread found a new alarm in the list, or already has an alarm
-*/
+     *Proceed only if thread found a new alarm in the list, or already has an alarm
+     */
 		else{
 			/*
-If thread found new alarm, assign it, and put it in the thread's sub list
-*/
+       *If thread found new alarm, assign it, and put it in the thread's sub list
+       */
 			if(alarm!=NULL){
-				/*
-assign alarm to thread
-*/
+      /*
+       *Assign alarm to thread
+       */
 				alarm->status=pthread_self();
 				/*
-Remove the thread from the main list
-*/
+         *Remove the thread from the global alarm_list
+         */
 				alarm_remover(alarm);
-				printf("Alarm With Message Type(%d)Assigned to Alarm Thread %ld at %d : %c\n",alarm->message_type,(long)pthread_self(),time (NULL),'A');
+				printf("Alarm Request With Message Type (%d) Assigned to Alarm Thread %ld at %d: Type %c\n",alarm->message_type,(long)pthread_self(),time (NULL),'A');
 				alarm->time=time (NULL)+alarm->seconds;
 				alarm_t **last, *next;
 				/*
-	Place alarm in list by time
-	*/
+	       *Place alarm in local thread list by time
+	       */
 				last = &thread_alarm_list;
 				next = *last;
 				while(next != NULL){
@@ -215,12 +223,12 @@ Remove the thread from the main list
 					alarm->link = NULL;
 				}
 				/*
-Assign the current_alarm with the alarm with the shortest time
-*/
+         *Assign the current_alarm with the alarm with the shortest time
+         */
 				current_alarm=thread_alarm_list;
 			}
-			/*
-If the current_alarm is ready to go, print the message. and remove it from the thread sublist
+/*
+*If the current_alarm is ready to go, print the message. and remove it from the thread sublist
 */
 			now=time(NULL);
 			if (current_alarm->time <= now){
@@ -228,7 +236,7 @@ If the current_alarm is ready to go, print the message. and remove it from the t
 				if (status != 0)
 				err_abort (status, "Unlock mutex");
 				printf ("(%d) %s\n", current_alarm->seconds, current_alarm->message);
-				printf("Alarm With Message Type(%d)Printed by Alarm Thread %ld at %d : %c \n",current_alarm->message_type,(long)pthread_self(),time (NULL),'A');
+				printf("Alarm With Message Type (%d) Printed by Alarm Thread %ld at %d: Type %c \n",current_alarm->message_type,(long)pthread_self(),time (NULL),'A');
 				if(current_alarm->link==NULL)
 				thread_alarm_list=NULL;
 				else
@@ -238,8 +246,8 @@ If the current_alarm is ready to go, print the message. and remove it from the t
 
 			}
 			/*
-If the current_alarm is not ready to go, go back to the list, and check if new alarm with same message type is available
-*/
+       *If the current_alarm is not ready to go, go back to the list, and check if new alarm with same message type is available
+       */
 			else{
 				status = pthread_mutex_unlock (&alarm_mutex);
 				if (status != 0)
@@ -249,6 +257,9 @@ If the current_alarm is not ready to go, go back to the list, and check if new a
 		}
 
 	}
+	/*
+	 *Pop the cleanup function after thread termination
+	 */
 	pthread_cleanup_pop(1);
 }
 
@@ -340,7 +351,9 @@ int main (int argc, char *argv[])
 				status = pthread_create (&thread, NULL, alarm_thread, &i);
 				if (status != 0)
 				err_abort (status, "Create alarm thread");
-
+				/*
+		     *Insert thread to thread list
+		     */
 				thread_node = (alarm_thread_t*)calloc(1,sizeof (alarm_thread_t));
 				thread_node->thread_id = thread;
 				thread_node->message_type = message_type;
@@ -348,17 +361,15 @@ int main (int argc, char *argv[])
 				if(head_thread == NULL){
 					head_thread = last_thread = thread_node;
 
-
 				}else
 				{
 					last_thread->link = thread_node;
 					last_thread = thread_node;
-
 				}
 
 
 				alarm_thread_t *temp;
-				printf("New Alarm Thread %ld For Message Type (%d) Created at %d: Type B.\n", thread, message_type, time(NULL));
+				printf("New Alarm Thread %ld For Message Type (%d) Created at %d: Type B\n", (long)thread, message_type, time(NULL));
 
 				break;
 
@@ -367,13 +378,16 @@ int main (int argc, char *argv[])
 				terminated_message_type = message_type;
 				int contains=0;
 				alarm_thread_t *temp_thread,*temp_thread_past;
-				/*Remove thread of MessageType(x) from list, and cancel thread
-					*/
+				/*
+				 *Remove thread of MessageType(x) from list, and cancel thread
+         */
 				temp_thread_past=NULL;
 				for(temp_thread= head_thread; temp_thread!=NULL;){
 					if((temp_thread->message_type)==terminated_message_type){
 						contains=1;
-						//printf("MessageType is here\n");
+						/*
+     				 *Terminate thread
+     				 */
 						pthread_cancel(temp_thread->thread_id);
 						if(head_thread==temp_thread)
 						head_thread=temp_thread->link;
@@ -399,16 +413,14 @@ int main (int argc, char *argv[])
 
 
 				/*
-						remove the alarms with specified MessageType
-						*/
+				 *remove the alarms with specified MessageType
+				 */
 
 				alarm_t *temp_alarm,*temp_alarm_past;
 				temp_alarm_past=NULL;
 				for(temp_alarm= alarm_list; temp_alarm!=NULL;){
-					//printf("%d %d\n",temp_alarm->message_type,terminated_message_type);
 					if((temp_alarm->message_type)==terminated_message_type){
 						contains=1;
-						//printf("MessageType is here\n");
 						if(alarm_list==temp_alarm)
 						alarm_list=temp_alarm->link;
 						else
@@ -429,9 +441,7 @@ int main (int argc, char *argv[])
 				}
 
 				if (contains){
-					printf("All Alarm Thread For Message Type (%d) Terminated And All Messages of Message Type Removed at <%d>:C\n",terminated_message_type,time(NULL) );
-				}else{
-					printf("MessageType thread not here\n");
+					printf("All Alarm Threads For Message Type (%d) Terminated And All Messages of Message Type Removed at %d: Type C\n",terminated_message_type,time(NULL) );
 				}
 				#ifdef DEBUG
 				alarm_thread_t *temp;
@@ -441,7 +451,7 @@ int main (int argc, char *argv[])
 				printf("[list: ");
 				for(next = alarm_list; next != NULL; next = next->link)
 				printf("%d(%d)[\"%s\"] ", next->time,
-				next->time, next->message);
+				next->time, next->message
 				printf("]\n");
 				#endif
 
@@ -469,10 +479,10 @@ int main (int argc, char *argv[])
 
 				/*
 				* Insert the new alarm into the list of alarms,
-				* sorted by expiration time.
+				* sorted by Message Type
 				*/
 				alarm_insert(alarm);
-				printf("Alarm Request With Message Type (%d) Inserted by Main Thread %ld Into Alarm List at %d: Type A\n", alarm->message_type, pthread_self(), time (NULL));
+				printf("Alarm Request With Message Type (%d) Inserted by Main Thread %ld Into Alarm List at %d: Type A\n", alarm->message_type, (long)pthread_self(), time (NULL));
 
 				status = pthread_mutex_unlock (&alarm_mutex);
 				if (status != 0)
