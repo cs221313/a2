@@ -142,6 +142,10 @@ void *alarm_thread (void *arg)
 	 */
 	while (1) {
 		/*
+		 *Yield thread so the other trheads are given cpu
+		 */
+        pthread_yield(NULL);
+		/*
      *Get Mutex lock
      */
 		status = pthread_mutex_lock (&alarm_mutex);
@@ -495,4 +499,8 @@ int main (int argc, char *argv[])
 			}
 		}
 	}
+	/*
+	 *Yield Main so the trheads are given cpu
+	 */
+pthread_yield(NULL);
 }
