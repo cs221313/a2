@@ -1,0 +1,18 @@
+Create_Thread: MessageType(2)
+Create_Thread: MessageType(2)
+Create_Thread: MessageType(3)
+Terminate_Thread: MessageType(2)
+5 MessageType(2) Will meet you at Grandmas house at 3
+5 MessageType(3) Will meet you at Grandmas house at 3
+Terminate_Thread: MessageType(2)
+Create_Thread: MessageType(2)
+5 MessageType(3) Will meet you at Grandmas house at 3
+5 MessageType(6) Will meet you at Grandmas house at 3
+invalid message
+Create_Thread: MessageType(6)
+5 MessageType(3) Will meet you at Grandmas house at 3
+5 MessageType(6) Will meet you at Grandmas house at 3
+5 MessageType(3) Will meet you at Grandmas house at 3
+5 MessageType(6) Will meet you at Grandmas house at 3
+Terminate_Thread: MessageType(3)
+5 MessageType(2) Will meet you at Grandmas house at 3
