@@ -182,9 +182,14 @@ void *alarm_thread (void *arg)
 	int sleep_time;
 	time_t now;
 	int status;
+	/*
+	 *GEt messagetype variable from main
+	 */
 	int type_of_thread = *((int *) arg);
+	free(arg);
 	current_alarm=NULL;
 	thread_alarm_list=NULL;
+	//printf("%ld %d\n",pthread_self(),type_of_thread);
   /*
 	 *Push the function pthread_mutex_lock to cleanup thread after termination
 	 */
@@ -406,8 +411,12 @@ int main (int argc, char *argv[])
 		switch(cmd_type){
 			//If Type B
 		case 1:{
-				int i = message_type;
-				status = pthread_create (&thread, NULL, alarm_thread, &i);
+			/*
+			 *Put messagetype variable in thread
+			 */
+				int *i = malloc(sizeof(*i));
+				*i=message_type;
+				status = pthread_create (&thread, NULL, alarm_thread, (void *) i);
 				if (status != 0)
 				err_abort (status, "Create alarm thread");
 				/*
@@ -444,7 +453,7 @@ int main (int argc, char *argv[])
 					if((temp_thread->message_type)==terminated_message_type){
 						contains=1;
 						/*
-     				 *Terminate thread
+     				 *Terminate thread and remove from linked list
      				 */
 						pthread_cancel(temp_thread->thread_id);
 						if(head_thread==temp_thread)
