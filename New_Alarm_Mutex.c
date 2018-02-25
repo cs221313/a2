@@ -97,6 +97,10 @@ void alarm_insert(alarm_t *alarm)
  */
 void alarm_remover(alarm_t *alarm){
 	alarm_t *temp_alarm,*temp_alarm_past;
+	int status;
+	status = pthread_mutex_lock (&alarm_mutex);
+	if (status != 0)
+	err_abort (status, "Lock mutex");
 	temp_alarm_past=NULL;
 	for(temp_alarm = alarm_list; temp_alarm!= NULL; temp_alarm_past=temp_alarm, temp_alarm = (temp_alarm->link)){
 		if(temp_alarm==alarm){
@@ -117,6 +121,10 @@ void alarm_remover(alarm_t *alarm){
 	temp_alarm->time/* = time (NULL)*/, temp_alarm->message);
 	printf("]\n");
 #endif
+
+status = pthread_mutex_unlock (&alarm_mutex);
+if (status != 0)
+err_abort (status, "Unlock mutex");
 
 }
 
@@ -141,10 +149,6 @@ void *alarm_thread (void *arg)
 	 * be disintegrated when the process exits.
 	 */
 	while (1) {
-		/*
-		 *Yield thread so the other trheads are given cpu
-		 */
-        pthread_yield(NULL);
 		/*
      *Get Mutex lock
      */
@@ -189,6 +193,9 @@ void *alarm_thread (void *arg)
      *Proceed only if thread found a new alarm in the list, or already has an alarm
      */
 		else{
+			status = pthread_mutex_unlock (&alarm_mutex);
+			if (status != 0)
+			err_abort (status, "Unlock mutex");
 			/*
        *If thread found new alarm, assign it, and put it in the thread's sub list
        */
@@ -236,9 +243,6 @@ void *alarm_thread (void *arg)
 */
 			now=time(NULL);
 			if (current_alarm->time <= now){
-				status = pthread_mutex_unlock (&alarm_mutex);
-				if (status != 0)
-				err_abort (status, "Unlock mutex");
 				printf ("(%d) %s\n", current_alarm->seconds, current_alarm->message);
 				printf("Alarm With Message Type (%d) Printed by Alarm Thread %ld at %d: Type %c \n",current_alarm->message_type,(long)pthread_self(),time (NULL),'A');
 				if(current_alarm->link==NULL)
@@ -253,9 +257,6 @@ void *alarm_thread (void *arg)
        *If the current_alarm is not ready to go, go back to the list, and check if new alarm with same message type is available
        */
 			else{
-				status = pthread_mutex_unlock (&alarm_mutex);
-				if (status != 0)
-				err_abort (status, "Unlock mutex");
 				continue;
 			}
 		}
@@ -372,7 +373,6 @@ int main (int argc, char *argv[])
 				}
 
 
-				alarm_thread_t *temp;
 				printf("New Alarm Thread %ld For Message Type (%d) Created at %d: Type B\n", (long)thread, message_type, time(NULL));
 
 				break;
@@ -422,6 +422,9 @@ int main (int argc, char *argv[])
 
 				alarm_t *temp_alarm,*temp_alarm_past;
 				temp_alarm_past=NULL;
+				status = pthread_mutex_unlock (&alarm_mutex);
+				if (status != 0)
+				err_abort (status, "Unlock mutex");
 				for(temp_alarm= alarm_list; temp_alarm!=NULL;){
 					if((temp_alarm->message_type)==terminated_message_type){
 						contains=1;
@@ -443,6 +446,10 @@ int main (int argc, char *argv[])
 						temp_alarm = (temp_alarm->link);
 					}
 				}
+
+				status = pthread_mutex_unlock (&alarm_mutex);
+				if (status != 0)
+				err_abort (status, "Unlock mutex");
 
 				if (contains){
 					printf("All Alarm Threads For Message Type (%d) Terminated And All Messages of Message Type Removed at %d: Type C\n",terminated_message_type,time(NULL) );
