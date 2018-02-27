@@ -1,4 +1,4 @@
-1.First open the a2 directory; it contains the files "New_Alarm_Mutex.c", "errors.h", and 'Makefile'.
+1.First open the working directory; it contains the files "New_Alarm_Mutex.c", "errors.h",'Makefile', 'test_output.txt', and 'Reportassignment2.pdf'.
 
 2.To compile, type "make" into the command line.
 
